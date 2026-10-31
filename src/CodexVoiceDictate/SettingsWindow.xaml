@@ -107,12 +107,7 @@
                                          ToolTip="Click here and press a shortcut" PreviewKeyDown="OnShortcutKeyDown" />
                             </StackPanel>
                         </Grid>
-                        <TextBlock Text="Technical words" Style="{StaticResource FieldHeading}" Margin="0,19,0,3" />
-                        <TextBlock Text="Optional: class names, libraries and terms, separated by commas or new lines."
-                                   Style="{StaticResource Hint}" Margin="0,0,0,8" />
-                        <TextBox x:Name="KeywordsBox" Height="90" AcceptsReturn="True"
-                                 TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
-                        <CheckBox x:Name="NotificationsEnabled" Content="Show tray notifications" Margin="0,18,0,0" />
+                        <CheckBox x:Name="NotificationsEnabled" Content="Show tray notifications" Margin="0,19,0,0" />
                     </StackPanel>
                 </Border>
             </StackPanel>

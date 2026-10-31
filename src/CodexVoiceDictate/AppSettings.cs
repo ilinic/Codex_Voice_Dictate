@@ -13,7 +13,6 @@ internal sealed class AppSettings
     public bool ShowNotifications { get; set; } = true;
     public string InsertShortcut { get; set; } = "F8";
     public string SendShortcut { get; set; } = "F9";
-    public string TechnicalKeywords { get; set; } = "";
     public string ComposerAutomationId { get; set; } = "";
     public string ComposerName { get; set; } = "";
     public string ComposerClassName { get; set; } = "";
@@ -46,9 +45,6 @@ internal sealed class AppSettings
     ];
 
     public string[] SelectedLanguages => RecognitionLanguages.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    public string[] Keywords => TechnicalKeywords.Split([',', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-        .Where(value => value.Length <= 80 && !value.Contains('<') && !value.Contains('>')).Distinct().Take(30).ToArray();
-
     public string GetApiKey()
     {
         if (!string.IsNullOrWhiteSpace(ProtectedApiKey))

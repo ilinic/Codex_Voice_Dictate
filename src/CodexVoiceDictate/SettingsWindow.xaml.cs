@@ -53,7 +53,6 @@ public partial class SettingsWindow : Window
 
         InsertShortcutBox.Text = settings.InsertShortcut;
         SendShortcutBox.Text = settings.SendShortcut;
-        KeywordsBox.Text = settings.TechnicalKeywords;
         NotificationsEnabled.IsChecked = settings.ShowNotifications;
 
         // The available working area differs between 4K displays and small laptops.
@@ -121,7 +120,6 @@ public partial class SettingsWindow : Window
         _settings.CorrectionModel = AppSettings.CorrectionModels[CorrectionModelBox.SelectedIndex].Id;
         _settings.InsertShortcut = insert.ToString();
         _settings.SendShortcut = send.ToString();
-        _settings.TechnicalKeywords = KeywordsBox.Text;
         _settings.ShowNotifications = NotificationsEnabled.IsChecked == true;
 
         try { _settings.Save(); }

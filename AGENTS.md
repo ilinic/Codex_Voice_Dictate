@@ -12,14 +12,14 @@ Keep `README.md` deliberately short and user-facing. Put engineering notes, arch
 ## User flow
 
 - Right-click tray icon for controls, Settings, and Exit; double-click opens Settings.
-- F8: start recording; press again to stop, transcribe, and insert text. F9: while recording, stop, transcribe, insert, and send only after text verification. Escape: cancel. Ctrl+Alt+B: bind the focused target field, including a focus-only fallback for custom UI controls. Insert/send shortcuts are user-configurable.
+- F8: start recording; press again to stop, transcribe, and insert text. F9: while recording, stop, transcribe, insert, and send only after text verification. Sending uses Ctrl+Enter in Codex (to handle long/multi-line prompts) and Enter in other applications. Escape: cancel. Ctrl+Alt+B: bind the focused target field, including a focus-only fallback for custom UI controls. Insert/send shortcuts are user-configurable.
 - Tray icon signals ready, recording, transcription, correction, insertion, success, error, and cancellation. Avoid implying insertion succeeded when it has not been verified.
-- Default recognition languages are Russian and English; leaving the language selection empty enables automatic detection. Technical keyword hints are supported. Transcription uses `gpt-transcribe`; optional text correction defaults to `gpt-6-luna` and falls back to the raw transcript on failure.
+- Default recognition languages are Russian and English; leaving the language selection empty enables automatic detection. Transcription uses `gpt-transcribe`; optional text correction defaults to `gpt-6-luna` and falls back to the raw transcript on failure.
 
 ## Security and behavior invariants
 
 - User-supplied API key is encrypted with Windows DPAPI for the current user in `%LOCALAPPDATA%/CodexVoiceDictate/settings.json`; `OPENAI_API_KEY` is a fallback. Never read/extract Codex's credential cache or commit secrets.
-- Recording is user-triggered, limited to 120 seconds, and buffered in memory. Do not save audio files. The OpenAI transcription endpoint receives microphone audio; optional correction sends recognized text and keywords with `store: false`.
+- Recording is user-triggered, limited to 120 seconds, and buffered in memory. Do not save audio files. The OpenAI transcription endpoint receives microphone audio; optional correction sends recognized text with `store: false`.
 - Use Windows UI Automation and an optional bound field fingerprint (process, window, element), with HWND focus checks for inaccessible custom editors such as Swing. Native focus HWNDs are session-local: after process restart, bind again if a semantic element cannot be found. Do not rely on fixed screen coordinates. Auto-send only after the inserted text has been verified via ValuePattern or TextPattern; paste attempts without read-back use `Unverified` status and never auto-send. If insertion fails, preserve the transcript for retry/copy.
 - Accessibility providers may omit an editor's text or reject `SetFocus` (particularly Java Swing/JetBrains). Windows foreground activation is not guaranteed; test focus, insertion, and submission on a real Windows desktop. Do not claim that a CI build verifies the UI behavior.
 

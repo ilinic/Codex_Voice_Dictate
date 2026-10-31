@@ -137,7 +137,13 @@ internal static class CodexComposer
 
         if (send)
         {
-            // Users must configure the target app so Enter submits the message.
+            // Codex may require Ctrl+Enter for multi-line prompts. Other editors
+            // generally use Enter, so do not change their shortcut behavior.
+            if (IsCodexWindow(window))
+            {
+                SendChord(0x11, 0x0D); // Ctrl+Enter
+                return new(true, true, "Text verified; Ctrl+Enter sent to Codex.");
+            }
             SendKey(0x0D);
             return new(true, true, "Text verified; Enter sent to the bound application.");
         }
