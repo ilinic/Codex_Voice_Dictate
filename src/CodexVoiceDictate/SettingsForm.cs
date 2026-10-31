@@ -17,85 +17,169 @@ internal sealed class SettingsForm : Form
         _settings = settings;
         Text = "Codex Voice Dictate — Settings";
         StartPosition = FormStartPosition.CenterScreen;
-        // The layout below is specified in logical 96-DPI, Segoe UI 9pt units.
-        // Without design-time dimensions, programmatic forms keep 590x610 physical
-        // pixels even when Windows is set to 150–250% scaling.
         Font = SystemFonts.MessageBoxFont;
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(590, 610);
-        MinimumSize = new Size(550, 570);
+        ClientSize = new Size(640, 630);
+        MinimumSize = new Size(520, 450);
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = false;
 
-        var layout = new TableLayoutPanel
+        // Only the content area scrolls. The Save/Cancel buttons remain accessible
+        // even with large Windows text sizes or on a smaller secondary monitor.
+        var root = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, Padding = new Padding(16), AutoScroll = true,
-            ColumnCount = 2, RowCount = 9
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(18)
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        Controls.Add(layout);
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        Controls.Add(root);
 
-        _apiKey = new TextBox { Dock = DockStyle.Top, UseSystemPasswordChar = true, Text = settings.GetApiKey() };
-        AddRow(layout, 0, "OpenAI API key", _apiKey, 34);
-        var hint = new Label
+        var scroller = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+        root.Controls.Add(scroller, 0, 0);
+
+        // AutoSize rows use each control's preferred height. Fixed 34/38-pixel
+        // rows clipped labels, checkboxes and text at 150–250% display scaling.
+        var fields = new TableLayoutPanel
         {
-            AutoSize = true, Text = "Stored encrypted for this Windows user (DPAPI). Empty = use OPENAI_API_KEY, if set.",
-            ForeColor = Color.DimGray, Dock = DockStyle.Fill
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            RowCount = 0,
+            GrowStyle = TableLayoutPanelGrowStyle.AddRows,
+            Padding = new Padding(0, 0, 12, 0)
         };
-        layout.Controls.Add(hint, 1, 1);
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        scroller.Controls.Add(fields);
+        fields.SuspendLayout();
 
-        _languages = new CheckedListBox { CheckOnClick = true, Height = 140, Dock = DockStyle.Fill };
+        _apiKey = new TextBox { UseSystemPasswordChar = true, Text = settings.GetApiKey() };
+        AddField(fields, "OpenAI API key", _apiKey);
+        AddRow(fields, new Label
+        {
+            Text = "Encrypted for this Windows user. Blank = OPENAI_API_KEY.",
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ForeColor = Color.DimGray,
+            Margin = new Padding(0, 0, 0, 12)
+        });
+
+        _languages = new CheckedListBox
+        {
+            CheckOnClick = true,
+            IntegralHeight = false,
+            Height = Font.Height * 7 + 12,
+            MinimumSize = new Size(0, Font.Height * 7 + 12)
+        };
         var selected = settings.SelectedLanguages.ToHashSet();
         foreach (var language in AppSettings.Languages)
         {
             int index = _languages.Items.Add($"{language.English} ({language.Code})");
             _languages.SetItemChecked(index, selected.Contains(language.Code));
         }
-        AddRow(layout, 2, "Recognition languages\n(none = auto-detect)", _languages, 154);
+        AddField(fields, "Recognition languages (none = auto-detect)", _languages);
 
-        _correction = new CheckBox { Text = "Correct technical terms and punctuation", Checked = settings.CorrectText, AutoSize = true };
-        AddRow(layout, 3, "Text correction", _correction, 34);
+        _correction = new CheckBox
+        {
+            Text = "Correct technical terms and punctuation",
+            Checked = settings.CorrectText,
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            Margin = new Padding(0, 10, 0, 10)
+        };
+        AddRow(fields, _correction);
 
-        _correctionModel = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Top };
+        _correctionModel = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         _correctionModel.Items.AddRange(AppSettings.CorrectionModels.Select(m => m.Label).ToArray());
         int modelIndex = Array.FindIndex(AppSettings.CorrectionModels, m => m.Id == settings.CorrectionModel);
         _correctionModel.SelectedIndex = modelIndex < 0 ? 0 : modelIndex;
         _correctionModel.Enabled = _correction.Checked;
         _correction.CheckedChanged += (_, _) => _correctionModel.Enabled = _correction.Checked;
-        AddRow(layout, 4, "Correction model", _correctionModel, 38);
+        AddField(fields, "Correction model", _correctionModel);
 
-        _insertShortcut = new ShortcutCaptureBox(settings.InsertShortcut) { Dock = DockStyle.Top };
-        AddRow(layout, 5, "Start / stop, insert only", _insertShortcut, 38);
-        _sendShortcut = new ShortcutCaptureBox(settings.SendShortcut) { Dock = DockStyle.Top };
-        AddRow(layout, 6, "Stop and send", _sendShortcut, 38);
+        _insertShortcut = new ShortcutCaptureBox(settings.InsertShortcut);
+        AddField(fields, "Start / stop (insert only)", _insertShortcut);
+        _sendShortcut = new ShortcutCaptureBox(settings.SendShortcut);
+        AddField(fields, "Stop and send", _sendShortcut);
 
-        _keywords = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Text = settings.TechnicalKeywords };
-        AddRow(layout, 7, "Technical words (optional)\ncomma or newline separated", _keywords, 72);
+        _keywords = new TextBox
+        {
+            Multiline = true,
+            ScrollBars = ScrollBars.Vertical,
+            Text = settings.TechnicalKeywords,
+            Height = Font.Height * 4 + 8,
+            MinimumSize = new Size(0, Font.Height * 4 + 8)
+        };
+        AddField(fields, "Technical words (optional, comma or newline separated)", _keywords);
 
-        _notifications = new CheckBox { Text = "Show tray notifications", Checked = settings.ShowNotifications, AutoSize = true };
-        AddRow(layout, 8, "Notifications", _notifications, 34);
+        _notifications = new CheckBox
+        {
+            Text = "Show tray notifications",
+            Checked = settings.ShowNotifications,
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            Margin = new Padding(0, 10, 0, 8)
+        };
+        AddRow(fields, _notifications);
+        fields.ResumeLayout(true);
 
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 56, Padding = new Padding(0, 8, 16, 8) };
-        var save = new Button { Text = "Save", Width = 90, DialogResult = DialogResult.None };
-        var cancel = new Button { Text = "Cancel", Width = 90, DialogResult = DialogResult.Cancel };
+        var buttons = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            Margin = new Padding(0, 12, 0, 0)
+        };
+        var save = new Button
+        {
+            Text = "Save",
+            AutoSize = true,
+            MinimumSize = new Size(96, 0),
+            Padding = new Padding(10, 6, 10, 6),
+            DialogResult = DialogResult.None
+        };
+        var cancel = new Button
+        {
+            Text = "Cancel",
+            AutoSize = true,
+            MinimumSize = new Size(96, 0),
+            Padding = new Padding(10, 6, 10, 6),
+            DialogResult = DialogResult.Cancel
+        };
         save.Click += SaveClicked;
         buttons.Controls.Add(save);
         buttons.Controls.Add(cancel);
-        Controls.Add(buttons);
+        root.Controls.Add(buttons, 0, 1);
         AcceptButton = save;
         CancelButton = cancel;
     }
 
-    private static void AddRow(TableLayoutPanel grid, int row, string label, Control control, int height)
+    private static void AddField(TableLayoutPanel grid, string caption, Control control)
     {
-        while (grid.RowStyles.Count <= row) grid.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
-        grid.RowStyles[row].Height = height;
-        var text = new Label { Text = label, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoSize = false };
-        grid.Controls.Add(text, 0, row);
-        grid.Controls.Add(control, 1, row);
+        AddRow(grid, new Label
+        {
+            Text = caption,
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            Margin = new Padding(0, 8, 0, 3)
+        });
+        control.Dock = DockStyle.Top;
+        control.Margin = new Padding(0, 0, 0, 8);
+        AddRow(grid, control);
+    }
+
+    private static void AddRow(TableLayoutPanel grid, Control control)
+    {
+        int row = grid.RowCount++;
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        grid.Controls.Add(control, 0, row);
     }
 
     private void SaveClicked(object? sender, EventArgs e)

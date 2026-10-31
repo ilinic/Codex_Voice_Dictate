@@ -6,7 +6,7 @@ Keep `README.md` deliberately short and user-facing. Put engineering notes, arch
 
 - Standalone Windows 10/11 x64 system-tray app for voice dictation into the Codex desktop composer. The app is independent of Codex login and uses a separately supplied OpenAI Platform API key.
 - Built with C#/.NET 8 (`net8.0-windows`), Windows Forms, Windows UI Automation, and NAudio. Project: `src/CodexVoiceDictate/CodexVoiceDictate.csproj`.
-- High-DPI is configured at process startup via generated `ApplicationConfiguration.Initialize()` and `<ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>`. Keep Windows system fonts, the settings form's 96-DPI `AutoScaleDimensions`, and WinForms layout scaling intact so both the dialog and context menu are readable at 4K / 150–250% scaling. Test on mixed-DPI displays as well as a single 4K monitor.
+- High-DPI is configured at process startup via generated `ApplicationConfiguration.Initialize()` and `<ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>`. Keep Windows system fonts and the settings form's 96-DPI `AutoScaleDimensions`. Settings fields must use content-sized (`SizeType.AutoSize`) rows in a scrollable panel, not fixed pixel row heights; Save/Cancel live in an always-visible footer. Fixed rows clipped content at 4K / 150–250% scaling. Test on mixed-DPI displays as well as a single 4K monitor.
 - Code map: `Program.cs` (entry), `TrayApplication.cs` (tray states and commands), `SettingsForm.cs` (preferences), `AppSettings.cs` (configuration and DPAPI key storage), `GlobalHotkeys.cs` (shortcuts), `WaveCapture.cs` (recording), `OpenAiSpeechClient.cs` (transcription and correction API), `CodexComposer.cs` (locating, binding, inserting, verifying, sending).
 
 ## User flow
