@@ -5,9 +5,9 @@ Keep `README.md` deliberately short and user-facing. Put engineering notes, arch
 ## Product and scope
 
 - Standalone Windows 10/11 x64 system-tray app for voice dictation into the Codex desktop composer. The app is independent of Codex login and uses a separately supplied OpenAI Platform API key.
-- Built with C#/.NET 8 (`net8.0-windows`), Windows Forms, Windows UI Automation, and NAudio. Project: `src/CodexVoiceDictate/CodexVoiceDictate.csproj`.
-- High-DPI is configured at process startup via generated `ApplicationConfiguration.Initialize()` and `<ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>`. Keep Windows system fonts and the settings form's 96-DPI `AutoScaleDimensions`. Settings fields must use content-sized (`SizeType.AutoSize`) rows in a scrollable panel, not fixed pixel row heights; Save/Cancel live in an always-visible footer. Fixed rows clipped content at 4K / 150–250% scaling. Test on mixed-DPI displays as well as a single 4K monitor.
-- Code map: `Program.cs` (entry), `TrayApplication.cs` (tray states and commands), `SettingsForm.cs` (preferences), `AppSettings.cs` (configuration and DPAPI key storage), `GlobalHotkeys.cs` (shortcuts), `WaveCapture.cs` (recording), `OpenAiSpeechClient.cs` (transcription and correction API), `CodexComposer.cs` (locating, binding, inserting, verifying, sending).
+- Built with C#/.NET 8 (`net8.0-windows`), Windows Forms for the tray, WPF for the settings window, Windows UI Automation, and NAudio. Project: `src/CodexVoiceDictate/CodexVoiceDictate.csproj` (`UseWindowsForms` and `UseWPF` are both enabled).
+- High-DPI is configured at startup via generated `ApplicationConfiguration.Initialize()` and `<ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>`. Settings are a native WPF window (`SettingsWindow.xaml` plus code-behind) that uses device-independent units, a flexible WrapPanel for language choices, and a scrollable body with a fixed footer. At creation it caps its size to the active monitor's work area. Preserve system text preferences. Test on both 4K and small / mixed-DPI displays.
+- Code map: `Program.cs` (entry), `TrayApplication.cs` (tray states and commands), `SettingsWindow.xaml` / `.xaml.cs` (preferences), `AppSettings.cs` (configuration and DPAPI key storage), `GlobalHotkeys.cs` (shortcuts), `WaveCapture.cs` (recording), `OpenAiSpeechClient.cs` (transcription and correction API), `CodexComposer.cs` (locating, binding, inserting, verifying, sending).
 
 ## User flow
 

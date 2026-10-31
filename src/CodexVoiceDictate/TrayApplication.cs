@@ -233,8 +233,8 @@ internal sealed class TrayApplication : ApplicationContext
     {
         if (IsBusy) return;
         _hotkeys.UnregisterAll();
-        using var form = new SettingsForm(_settings);
-        form.ShowDialog();
+        var window = new SettingsWindow(_settings);
+        window.ShowDialog();
         RegisterHotkeys();
         if (_stage == Stage.Error && _stageDetails.StartsWith("Hotkey registration", StringComparison.Ordinal)) return;
         SetStage(Stage.Ready, "Ready");
