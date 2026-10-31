@@ -20,6 +20,11 @@ internal sealed class AppSettings
     public bool ComposerBound { get; set; }
     public double ComposerRelativeX { get; set; }
     public double ComposerRelativeY { get; set; }
+    // Bound target identity. Composer* properties remain for compatibility with older settings.json files.
+    public string TargetProcessName { get; set; } = "";
+    public string TargetWindowTitle { get; set; } = "";
+    public string TargetWindowClassName { get; set; } = "";
+    public string TargetControlType { get; set; } = "";
 
     public static readonly (string Code, string English, string Russian)[] Languages =
     [

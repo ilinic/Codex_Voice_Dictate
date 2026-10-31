@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace CodexVoiceDictate;
 
-internal enum Stage { Ready, Recording, Transcribing, Correcting, Inserting, Done, Error, Cancelled }
+internal enum Stage { Ready, Recording, Transcribing, Correcting, Inserting, Done, Unverified, Error, Cancelled }
 
 /// <summary>No main window: the tray icon is the primary UI and communicates stage through a glyph and color.</summary>
 internal sealed class TrayApplication : ApplicationContext
@@ -44,7 +44,7 @@ internal sealed class TrayApplication : ApplicationContext
             _stageItem, new ToolStripSeparator(), _startItem, _sendItem, _cancelItem,
             new ToolStripSeparator(), _retryItem, _copyItem,
             new ToolStripSeparator(),
-            new ToolStripMenuItem("Bind Codex composer (Ctrl+Alt+B)", null, (_, _) => ExplainBinding()),
+            new ToolStripMenuItem("How to bind a text field (Ctrl+Alt+B)...", null, (_, _) => ExplainBinding()),
             new ToolStripMenuItem("Settings...", null, (_, _) => ShowSettings()),
             new ToolStripMenuItem("Exit", null, (_, _) => ExitThread())
         ]);
@@ -68,6 +68,12 @@ internal sealed class TrayApplication : ApplicationContext
             Shortcut.TryParse(_settings.InsertShortcut, out var insert);
             Shortcut.TryParse(_settings.SendShortcut, out var send);
             _hotkeys.RegisterMain(insert, send);
+            if (!_hotkeys.BindHotkeyAvailable)
+            {
+                SetStage(Stage.Error, "Ctrl+Alt+B is already in use; binding shortcut unavailable");
+                _tray.ShowBalloonTip(5000, "Binding hotkey unavailable",
+                    "Another application reserved Ctrl+Alt+B. Close it or release that global shortcut.", ToolTipIcon.Warning);
+            }
         }
         catch (Exception error)
         {
@@ -150,13 +156,14 @@ internal sealed class TrayApplication : ApplicationContext
             }
             if (cancellation.IsCancellationRequested) return;
             _lastTranscript = result;
-            SetStage(Stage.Inserting, "Finding Codex composer...");
+            SetStage(Stage.Inserting, "Finding bound text field...");
             DeliveryResult delivery = CodexComposer.Insert(result, send);
-            if (delivery.Verified)
+            if (delivery.Succeeded)
             {
-                SetStage(Stage.Done, delivery.Message);
+                SetStage(delivery.Verified ? Stage.Done : Stage.Unverified, delivery.Message);
                 if (_settings.ShowNotifications)
-                    _tray.ShowBalloonTip(1500, "Codex Voice Dictate", delivery.Message, ToolTipIcon.Info);
+                    _tray.ShowBalloonTip(2500, "Codex Voice Dictate", delivery.Message,
+                        delivery.Verified ? ToolTipIcon.Info : ToolTipIcon.Warning);
             }
             else SetError(delivery.Message);
         }
@@ -198,7 +205,7 @@ internal sealed class TrayApplication : ApplicationContext
         {
             SetStage(Stage.Inserting, "Retrying insertion...");
             var delivery = CodexComposer.Insert(_lastTranscript, false);
-            if (delivery.Verified) SetStage(Stage.Done, delivery.Message);
+            if (delivery.Succeeded) SetStage(delivery.Verified ? Stage.Done : Stage.Unverified, delivery.Message);
             else SetError(delivery.Message);
         }
         catch (Exception error) { SetError(error.Message); }
@@ -218,15 +225,15 @@ internal sealed class TrayApplication : ApplicationContext
         {
             string result = CodexComposer.BindCurrent(_settings);
             SetStage(Stage.Done, result);
-            _tray.ShowBalloonTip(2000, "Composer linked", result, ToolTipIcon.Info);
+            _tray.ShowBalloonTip(3000, "Text field linked", result, ToolTipIcon.Info);
         }
         catch (Exception error) { SetError(error.Message); }
     }
 
     private static void ExplainBinding()
     {
-        MessageBox.Show("1. Open the Codex desktop application.\n2. Click inside the chat message composer.\n3. Press Ctrl+Alt+B.\n\nThis records an accessibility fingerprint of the intended editor. You can then dictate even when focus has moved elsewhere.",
-            "Bind Codex composer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        MessageBox.Show("1. Open Codex, IntelliJ IDEA, or another Windows application.\n2. Click inside the text field you want to dictate into.\n3. Press Ctrl+Alt+B while the field is focused.\n\nSome Java/Swing text fields only support focus-based paste. Keep that field focused during dictation; automatic sending requires verified text insertion.",
+            "Bind a text field", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private void ShowSettings()
@@ -252,7 +259,7 @@ internal sealed class TrayApplication : ApplicationContext
         _stage = stage;
         _stageDetails = details;
         _stageItem.Text = $"{stage}: {details}";
-        _startItem.Enabled = stage is Stage.Ready or Stage.Recording or Stage.Done or Stage.Error or Stage.Cancelled;
+        _startItem.Enabled = stage is Stage.Ready or Stage.Recording or Stage.Done or Stage.Unverified or Stage.Error or Stage.Cancelled;
         _sendItem.Enabled = stage == Stage.Recording;
         _cancelItem.Enabled = IsBusy;
         _retryItem.Enabled = !IsBusy && !string.IsNullOrWhiteSpace(_lastTranscript);
@@ -282,6 +289,7 @@ internal sealed class TrayApplication : ApplicationContext
                 Stage.Correcting => Color.FromArgb(139, 91, 213),
                 Stage.Inserting => Color.FromArgb(44, 143, 224),
                 Stage.Done => Color.FromArgb(30, 172, 116),
+                Stage.Unverified => Color.FromArgb(228, 158, 39),
                 Stage.Error => Color.FromArgb(220, 95, 44),
                 _ => Color.FromArgb(126, 134, 147)
             };
@@ -306,6 +314,9 @@ internal sealed class TrayApplication : ApplicationContext
                     graphics.DrawLine(pen, 17, 22, 23, 16); break;
                 case Stage.Done:
                     graphics.DrawLines(pen, new Point[] { new(9, 16), new(14, 21), new(23, 11) }); break;
+                case Stage.Unverified:
+                    graphics.DrawArc(pen, 12, 8, 8, 9, 180, 230);
+                    graphics.FillEllipse(Brushes.White, 14.5f, 22, 3, 3); break;
                 case Stage.Error:
                     graphics.DrawLine(pen, 16, 9, 16, 19);
                     graphics.FillEllipse(Brushes.White, 14.5f, 22, 3, 3); break;

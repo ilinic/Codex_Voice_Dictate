@@ -81,6 +81,7 @@ internal sealed class GlobalHotkeys : NativeWindow, IDisposable
     private const uint MOD_NOREPEAT = 0x4000;
     private readonly Action<int> _callback;
     private readonly HashSet<int> _registered = [];
+    public bool BindHotkeyAvailable => _registered.Contains(4);
 
     public GlobalHotkeys(Action<int> callback)
     {
