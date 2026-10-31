@@ -12,12 +12,12 @@ namespace CodexVoiceDictate;
 /// A DPI-independent WPF dialog hosted on the existing WinForms tray UI thread.
 /// All layout sizes are WPF device-independent pixels (DIPs), not screen pixels.
 /// </summary>
-internal partial class SettingsWindow : Window
+public partial class SettingsWindow : Window
 {
     private readonly AppSettings _settings;
     private readonly List<(string Code, WpfCheckBox CheckBox)> _languageChecks = [];
 
-    public SettingsWindow(AppSettings settings)
+    internal SettingsWindow(AppSettings settings)
     {
         _settings = settings;
         InitializeComponent();
