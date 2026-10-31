@@ -1,0 +1,33 @@
+name: Build Windows application
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore dependencies
+        run: dotnet restore src/CodexVoiceDictate/CodexVoiceDictate.csproj
+      - name: Build
+        run: dotnet build src/CodexVoiceDictate/CodexVoiceDictate.csproj --configuration Release --no-restore
+      - name: Publish self-contained Windows executable
+        run: dotnet publish src/CodexVoiceDictate/CodexVoiceDictate.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output publish
+      - name: Upload portable app
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodexVoiceDictate-win-x64
+          path: publish/
+          if-no-files-found: error
+          retention-days: 30
