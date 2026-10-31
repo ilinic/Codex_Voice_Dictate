@@ -5,8 +5,9 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
+        // Bootstrap high-DPI awareness before creating any WinForms controls.
+        ApplicationConfiguration.Initialize();
+        Application.SetDefaultFont(SystemFonts.MessageBoxFont);
         Application.Run(new TrayApplication());
     }
 }

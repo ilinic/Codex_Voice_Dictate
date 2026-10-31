@@ -33,7 +33,7 @@ internal sealed class TrayApplication : ApplicationContext
     public TrayApplication()
     {
         _settings = AppSettings.Load();
-        _menu = new ContextMenuStrip();
+        _menu = new ContextMenuStrip { Font = SystemFonts.MenuFont };
         _stageItem = new ToolStripMenuItem("Ready") { Enabled = false };
         _startItem = new ToolStripMenuItem("Start / stop (insert only)", null, (_, _) => ToggleRecording());
         _sendItem = new ToolStripMenuItem("Stop & send", null, (_, _) => Finish(true));

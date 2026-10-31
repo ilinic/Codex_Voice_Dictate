@@ -17,6 +17,11 @@ internal sealed class SettingsForm : Form
         _settings = settings;
         Text = "Codex Voice Dictate — Settings";
         StartPosition = FormStartPosition.CenterScreen;
+        // The layout below is specified in logical 96-DPI, Segoe UI 9pt units.
+        // Without design-time dimensions, programmatic forms keep 590x610 physical
+        // pixels even when Windows is set to 150–250% scaling.
+        Font = SystemFonts.MessageBoxFont;
+        AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(590, 610);
         MinimumSize = new Size(550, 570);
