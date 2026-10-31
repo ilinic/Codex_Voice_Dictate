@@ -33,7 +33,7 @@ internal sealed class WaveCapture : IDisposable
                 _duration.Start();
                 return;
             }
-            catch (Exception error) when (error is MmException or InvalidOperationException)
+            catch (Exception error)
             {
                 lastError = error;
                 input?.Dispose();

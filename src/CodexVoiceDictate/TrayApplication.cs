@@ -305,7 +305,7 @@ internal sealed class TrayApplication : ApplicationContext
                     graphics.DrawLine(pen, 17, 10, 23, 16);
                     graphics.DrawLine(pen, 17, 22, 23, 16); break;
                 case Stage.Done:
-                    graphics.DrawLines(pen, [new Point(9, 16), new Point(14, 21), new Point(23, 11)]); break;
+                    graphics.DrawLines(pen, new Point[] { new(9, 16), new(14, 21), new(23, 11) }); break;
                 case Stage.Error:
                     graphics.DrawLine(pen, 16, 9, 16, 19);
                     graphics.FillEllipse(Brushes.White, 14.5f, 22, 3, 3); break;
