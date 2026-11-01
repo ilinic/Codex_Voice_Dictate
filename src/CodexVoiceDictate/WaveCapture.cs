@@ -1,4 +1,5 @@
 using System.Buffers;
+using Concentus;
 using Concentus.Enums;
 using Concentus.Oggfile;
 using Concentus.Structs;
