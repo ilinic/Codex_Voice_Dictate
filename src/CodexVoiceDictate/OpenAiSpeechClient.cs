@@ -11,7 +11,7 @@ internal sealed class OpenAiSpeechClient
     private const string TranscriptionUrl = "https://api.openai.com/v1/audio/transcriptions";
     private const string ResponsesUrl = "https://api.openai.com/v1/responses";
 
-    public async Task<string> TranscribeAsync(byte[] wav, string apiKey, AppSettings settings, CancellationToken cancellation)
+    public async Task<string> TranscribeAsync(byte[] opus, string apiKey, AppSettings settings, CancellationToken cancellation)
     {
         using var content = new MultipartFormDataContent();
         content.Add(new StringContent("gpt-transcribe"), "model");
@@ -23,9 +23,9 @@ internal sealed class OpenAiSpeechClient
         content.Add(new StringContent(prompt), "prompt");
         foreach (string language in settings.SelectedLanguages)
             content.Add(new StringContent(language), "languages[]");
-        var audio = new ByteArrayContent(wav);
-        audio.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
-        content.Add(audio, "file", "dictation.wav");
+        var audio = new ByteArrayContent(opus);
+        audio.Headers.ContentType = new MediaTypeHeaderValue("audio/ogg");
+        content.Add(audio, "file", "dictation.ogg");
 
         using var request = NewRequest(TranscriptionUrl, apiKey);
         request.Content = content;

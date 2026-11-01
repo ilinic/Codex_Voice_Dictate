@@ -8,7 +8,6 @@ internal enum Stage { Ready, Recording, Transcribing, Correcting, Inserting, Don
 /// <summary>No main window: the tray icon is the primary UI and communicates stage through a glyph and color.</summary>
 internal sealed class TrayApplication : ApplicationContext
 {
-    private const int MaxRecordSeconds = 120;
     private readonly NotifyIcon _tray;
     private readonly ContextMenuStrip _menu;
     private readonly ToolStripMenuItem _stageItem;
@@ -56,8 +55,8 @@ internal sealed class TrayApplication : ApplicationContext
         _tray = new NotifyIcon { Text = "Codex Voice Dictate — Ready", Visible = true };
         _tray.MouseUp += (_, e) => { if (e.Button == MouseButtons.Right) ShowTrayMenu(); };
         _tray.DoubleClick += (_, _) => ShowSettings();
-        _tick = new System.Windows.Forms.Timer { Interval = 1000 };
-        _tick.Tick += (_, _) => { if (_stage == Stage.Recording && _capture?.Duration.TotalSeconds >= MaxRecordSeconds) Finish(false); };
+        _tick = new System.Windows.Forms.Timer { Interval = 250 };
+        _tick.Tick += (_, _) => { if (_stage == Stage.Recording && _capture?.LimitReached == true) Finish(false); };
         _reset = new System.Windows.Forms.Timer { Interval = 5000 };
         _reset.Tick += (_, _) => { _reset.Stop(); if (_stage is Stage.Done or Stage.Cancelled) SetStage(Stage.Ready, "Ready"); };
         _hotkeys = new GlobalHotkeys(HandleHotkey);
@@ -152,18 +151,19 @@ internal sealed class TrayApplication : ApplicationContext
         SetStage(Stage.Transcribing, "Preparing audio...");
         try
         {
-            byte[] wav = await capture.StopAsync();
+            byte[] opus = await capture.StopAsync();
             if (cancellation.IsCancellationRequested) return;
-            if (capture.Duration.TotalMilliseconds < 250 || wav.Length < 512)
+            if (capture.Duration.TotalMilliseconds < 250 || opus.Length < 256)
                 throw new InvalidOperationException("Recording was too short.");
-            if (wav.Length > 24 * 1024 * 1024)
-                throw new InvalidOperationException("Recording is too large for the transcription API.");
+            if (opus.Length > WaveCapture.MaxEncodedBytes)
+                throw new InvalidOperationException("Compressed recording is too large for the transcription API.");
             capture.Dispose();
             _capture = null;
             SetStage(Stage.Transcribing, "Transcribing speech...");
             string key = _settings.GetApiKey();
-            string result = await _client.TranscribeAsync(wav, key, _settings, cancellation.Token);
+            string result = await _client.TranscribeAsync(opus, key, _settings, cancellation.Token);
             if (cancellation.IsCancellationRequested) return;
+            _lastTranscript = result; // Keep the raw result even if optional correction fails.
 
             if (_settings.CorrectText)
             {
@@ -190,10 +190,17 @@ internal sealed class TrayApplication : ApplicationContext
                     _tray.ShowBalloonTip(2500, "Codex Voice Dictate", delivery.Message,
                         delivery.Verified ? ToolTipIcon.Info : ToolTipIcon.Warning);
             }
-            else SetError(delivery.Message);
+            else SetErrorWithClipboardFallback(delivery.Message);
         }
         catch (OperationCanceledException) { /* Escape cancellation. */ }
-        catch (Exception error) { if (!cancellation.IsCancellationRequested) SetError(error.Message); }
+        catch (Exception error)
+        {
+            if (!cancellation.IsCancellationRequested)
+            {
+                if (string.IsNullOrWhiteSpace(_lastTranscript)) SetError(error.Message);
+                else SetErrorWithClipboardFallback(error.Message);
+            }
+        }
         finally
         {
             _directPasteTarget = null;
@@ -233,16 +240,35 @@ internal sealed class TrayApplication : ApplicationContext
             SetStage(Stage.Inserting, "Retrying insertion...");
             var delivery = CodexComposer.Insert(_lastTranscript, false);
             if (delivery.Succeeded) SetStage(delivery.Verified ? Stage.Done : Stage.Unverified, delivery.Message);
-            else SetError(delivery.Message);
+            else SetErrorWithClipboardFallback(delivery.Message);
         }
-        catch (Exception error) { SetError(error.Message); }
+        catch (Exception error) { SetErrorWithClipboardFallback(error.Message); }
     }
 
     private void CopyLast()
     {
         if (string.IsNullOrEmpty(_lastTranscript)) return;
-        Clipboard.SetText(_lastTranscript);
-        SetStage(Stage.Done, "Transcript copied to clipboard");
+        if (TryCopyTranscriptToClipboard()) SetStage(Stage.Done, "Transcript copied to clipboard");
+        else SetError("Could not access the clipboard. Please try again.");
+    }
+
+    private void SetErrorWithClipboardFallback(string message)
+    {
+        SetError(message + (TryCopyTranscriptToClipboard()
+            ? " Transcript copied to clipboard; paste with Ctrl+V."
+            : " Could not copy automatically; use Copy last transcript in the tray."));
+    }
+
+    private bool TryCopyTranscriptToClipboard()
+    {
+        if (string.IsNullOrWhiteSpace(_lastTranscript)) return false;
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            try { Clipboard.SetText(_lastTranscript); return true; }
+            catch (ExternalException) { if (attempt < 2) Thread.Sleep(50); }
+            catch (ThreadStateException) { return false; }
+        }
+        return false;
     }
 
     private void BindFocusedComposer()
