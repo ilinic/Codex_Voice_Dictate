@@ -64,9 +64,15 @@
                                    Style="{StaticResource Hint}" Margin="0,9,0,0" />
                         <Separator Margin="0,17,0,14" Background="#E2E7EE" />
                         <TextBlock Text="Dictation target" Style="{StaticResource FieldHeading}" />
-                        <TextBlock x:Name="BoundTargetInfo" Style="{StaticResource Hint}" Margin="0,6,0,0" />
-                        <TextBlock Text="Focus a text field in any app and press Ctrl+Alt+B to bind it."
-                                   Style="{StaticResource Hint}" Margin="0,5,0,0" />
+                        <CheckBox x:Name="PasteToFocusedFieldBox" Content="Paste into the focused field (no binding)"
+                                  Margin="0,10,0,0" Checked="DirectPasteModeChanged" Unchecked="DirectPasteModeChanged" />
+                        <TextBlock Text="Focus the destination before recording and keep it focused until insertion finishes. Stop and send submits without text verification."
+                                   Style="{StaticResource Hint}" Margin="0,7,0,0" />
+                        <StackPanel x:Name="BoundTargetPanel" Margin="0,12,0,0">
+                            <TextBlock x:Name="BoundTargetInfo" Style="{StaticResource Hint}" />
+                            <TextBlock Text="When direct paste is off: focus a field and press Ctrl+Alt+B to bind it."
+                                       Style="{StaticResource Hint}" Margin="0,5,0,0" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 

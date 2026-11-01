@@ -5,6 +5,7 @@ using System.Windows.Automation;
 namespace CodexVoiceDictate;
 
 internal readonly record struct DeliveryResult(bool Succeeded, bool Verified, string Message);
+internal readonly record struct DirectPasteTarget(IntPtr WindowHandle, IntPtr FocusHandle, int ProcessId, bool IsCodex);
 
 /// <summary>
 /// Pins an explicitly focused text target in any Windows application. UI Automation
@@ -21,6 +22,73 @@ internal static class CodexComposer
     private static IntPtr _boundFocusHandle;
     private static int _boundProcessId;
     private static string _boundProcessName = "";
+
+    /// <summary>
+    /// In direct-paste mode, remember the actual foreground window at recording
+    /// start. Two windows of the same app remain distinct by their HWND.
+    /// </summary>
+    public static DirectPasteTarget CaptureDirectTarget()
+    {
+        IntPtr window = GetForegroundWindow();
+        if (window == IntPtr.Zero)
+            throw new InvalidOperationException("Focus the destination text field before starting recording.");
+        GetWindowThreadProcessId(window, out uint processId);
+        if (processId == 0 || processId == (uint)Environment.ProcessId)
+            throw new InvalidOperationException("Focus a text field in another application before starting recording.");
+
+        // Some Electron/Java windows expose no native child focus. Keep their
+        // foreground HWND as the destination even when this hint is absent.
+        IntPtr focused = GetNativeFocus(window);
+        bool codex = IsCodexProcess(processId);
+        return new DirectPasteTarget(window, focused, (int)processId, codex);
+    }
+
+    /// <summary>
+    /// Explicit user-selected shortcut mode: paste into the window focused when
+    /// recording began. No UIA read-back is claimed in this mode. Sending is a
+    /// separate explicit shortcut and requires the same focus to be retained.
+    /// </summary>
+    public static DeliveryResult InsertDirect(string text, bool send, DirectPasteTarget target)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return new(false, false, "The transcript is empty.");
+        if (!SameDirectTarget(target))
+            return new(false, false, "Focus moved away from the original text field. Nothing was pasted; copy the transcript from the tray.");
+        Clipboard.SetText(text);
+        SendChord(0x11, 0x56); // Ctrl+V into the already focused field
+        Thread.Sleep(250);
+        if (!SameDirectTarget(target))
+            return new(true, false, "Paste attempted, but focus changed before submission; nothing was sent.");
+
+        if (send)
+        {
+            if (target.IsCodex) SendChord(0x11, 0x0D); // Ctrl+Enter in Codex
+            else SendKey(0x0D); // Enter elsewhere
+            return new(true, false, target.IsCodex
+                ? "Clipboard paste and Ctrl+Enter sent to the focused Codex window (not verified)."
+                : "Clipboard paste and Enter sent to the focused window (not verified).");
+        }
+        return new(true, false, "Pasted through the clipboard into the focused field (not verified).");
+    }
+
+    private static bool SameDirectTarget(DirectPasteTarget target)
+    {
+        if (!IsWindow(target.WindowHandle) || GetForegroundWindow() != target.WindowHandle) return false;
+        GetWindowThreadProcessId(target.WindowHandle, out uint processId);
+        return processId == (uint)target.ProcessId &&
+               (target.FocusHandle == IntPtr.Zero || GetNativeFocus(target.WindowHandle) == target.FocusHandle);
+    }
+
+    private static bool IsCodexProcess(uint processId)
+    {
+        try
+        {
+            string process = Process.GetProcessById((int)processId).ProcessName;
+            return process.Contains("codex", StringComparison.OrdinalIgnoreCase) ||
+                   process.Contains("chatgpt", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        { return false; }
+    }
 
     public static string BindCurrent(AppSettings settings)
     {

@@ -31,6 +31,8 @@ public partial class SettingsWindow : Window
                 ? "Codex (older binding; press Ctrl+Alt+B to update)"
                 : $"{settings.TargetProcessName} — {settings.TargetWindowTitle}"
             : "No field bound yet. Codex is used by default.";
+        PasteToFocusedFieldBox.IsChecked = settings.PasteToFocusedField;
+        UpdateTargetMode();
         var selected = settings.SelectedLanguages.ToHashSet();
         foreach (var language in AppSettings.Languages)
         {
@@ -102,6 +104,13 @@ public partial class SettingsWindow : Window
             box.Text = shortcut.ToString();
     }
 
+    private void DirectPasteModeChanged(object sender, RoutedEventArgs e) => UpdateTargetMode();
+
+    private void UpdateTargetMode()
+    {
+        BoundTargetPanel.IsEnabled = PasteToFocusedFieldBox.IsChecked != true;
+    }
+
     private void SaveClicked(object sender, RoutedEventArgs e)
     {
         if (!Shortcut.TryParse(InsertShortcutBox.Text, out var insert) ||
@@ -120,6 +129,7 @@ public partial class SettingsWindow : Window
         _settings.CorrectionModel = AppSettings.CorrectionModels[CorrectionModelBox.SelectedIndex].Id;
         _settings.InsertShortcut = insert.ToString();
         _settings.SendShortcut = send.ToString();
+        _settings.PasteToFocusedField = PasteToFocusedFieldBox.IsChecked == true;
         _settings.ShowNotifications = NotificationsEnabled.IsChecked == true;
 
         try { _settings.Save(); }

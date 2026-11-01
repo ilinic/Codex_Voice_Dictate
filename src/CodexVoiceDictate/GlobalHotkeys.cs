@@ -89,15 +89,18 @@ internal sealed class GlobalHotkeys : NativeWindow, IDisposable
         CreateHandle(new CreateParams { Caption = "Codex Voice Dictate hotkeys" });
     }
 
-    public void RegisterMain(Shortcut insert, Shortcut send)
+    public void RegisterMain(Shortcut insert, Shortcut send, bool registerBinding)
     {
         UnregisterAll();
         try
         {
             Register(1, insert);
             Register(2, send);
-            try { Register(4, new Shortcut(Keys.B, HotkeyModifiers.Control | HotkeyModifiers.Alt)); }
-            catch (Win32Exception) { /* Optional calibration shortcut must not break dictation hotkeys. */ }
+            if (registerBinding)
+            {
+                try { Register(4, new Shortcut(Keys.B, HotkeyModifiers.Control | HotkeyModifiers.Alt)); }
+                catch (Win32Exception) { /* Optional binding shortcut must not break dictation hotkeys. */ }
+            }
         }
         catch { UnregisterAll(); throw; }
     }

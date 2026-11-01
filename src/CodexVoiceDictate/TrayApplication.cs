@@ -17,12 +17,14 @@ internal sealed class TrayApplication : ApplicationContext
     private readonly ToolStripMenuItem _cancelItem;
     private readonly ToolStripMenuItem _retryItem;
     private readonly ToolStripMenuItem _copyItem;
+    private readonly ToolStripMenuItem _targetHelpItem;
     private readonly GlobalHotkeys _hotkeys;
     private readonly System.Windows.Forms.Timer _tick;
     private readonly System.Windows.Forms.Timer _reset;
     private readonly OpenAiSpeechClient _client = new();
     private AppSettings _settings;
     private WaveCapture? _capture;
+    private DirectPasteTarget? _directPasteTarget;
     private CancellationTokenSource? _cancellation;
     private string _lastTranscript = "";
     private string _stageDetails = "Ready";
@@ -33,22 +35,26 @@ internal sealed class TrayApplication : ApplicationContext
     public TrayApplication()
     {
         _settings = AppSettings.Load();
-        _menu = new ContextMenuStrip { Font = SystemFonts.MenuFont };
+        _menu = new ContextMenuStrip { Font = SystemFonts.MenuFont, AutoClose = true };
         _stageItem = new ToolStripMenuItem("Ready") { Enabled = false };
         _startItem = new ToolStripMenuItem("Start / stop (insert only)", null, (_, _) => ToggleRecording());
         _sendItem = new ToolStripMenuItem("Stop & send", null, (_, _) => Finish(true));
         _cancelItem = new ToolStripMenuItem("Cancel (Esc)", null, (_, _) => Cancel());
         _retryItem = new ToolStripMenuItem("Retry inserting last transcript", null, (_, _) => RetryInsertion());
         _copyItem = new ToolStripMenuItem("Copy last transcript", null, (_, _) => CopyLast());
+        _targetHelpItem = new ToolStripMenuItem("How to bind a text field (Ctrl+Alt+B)...", null, (_, _) => ExplainBinding());
         _menu.Items.AddRange([
             _stageItem, new ToolStripSeparator(), _startItem, _sendItem, _cancelItem,
             new ToolStripSeparator(), _retryItem, _copyItem,
             new ToolStripSeparator(),
-            new ToolStripMenuItem("How to bind a text field (Ctrl+Alt+B)...", null, (_, _) => ExplainBinding()),
+            _targetHelpItem,
             new ToolStripMenuItem("Settings...", null, (_, _) => ShowSettings()),
             new ToolStripMenuItem("Exit", null, (_, _) => ExitThread())
         ]);
-        _tray = new NotifyIcon { Text = "Codex Voice Dictate — Ready", ContextMenuStrip = _menu, Visible = true };
+        // Show the tray menu ourselves so its owner can be foregrounded first.
+        // Otherwise Windows can leave a notification-area menu open after a click outside.
+        _tray = new NotifyIcon { Text = "Codex Voice Dictate — Ready", Visible = true };
+        _tray.MouseUp += (_, e) => { if (e.Button == MouseButtons.Right) ShowTrayMenu(); };
         _tray.DoubleClick += (_, _) => ShowSettings();
         _tick = new System.Windows.Forms.Timer { Interval = 1000 };
         _tick.Tick += (_, _) => { if (_stage == Stage.Recording && _capture?.Duration.TotalSeconds >= MaxRecordSeconds) Finish(false); };
@@ -67,8 +73,8 @@ internal sealed class TrayApplication : ApplicationContext
         {
             Shortcut.TryParse(_settings.InsertShortcut, out var insert);
             Shortcut.TryParse(_settings.SendShortcut, out var send);
-            _hotkeys.RegisterMain(insert, send);
-            if (!_hotkeys.BindHotkeyAvailable)
+            _hotkeys.RegisterMain(insert, send, !_settings.PasteToFocusedField);
+            if (!_settings.PasteToFocusedField && !_hotkeys.BindHotkeyAvailable)
             {
                 SetStage(Stage.Error, "Ctrl+Alt+B is already in use; binding shortcut unavailable");
                 _tray.ShowBalloonTip(5000, "Binding hotkey unavailable",
@@ -80,6 +86,16 @@ internal sealed class TrayApplication : ApplicationContext
             SetStage(Stage.Error, "Hotkey registration failed: " + error.Message);
             _tray.ShowBalloonTip(6000, "Global shortcut unavailable", error.Message, ToolTipIcon.Warning);
         }
+    }
+
+    private void ShowTrayMenu()
+    {
+        // The hidden native hotkey window is a stable top-level menu owner.
+        // Follow the Win32 tray-menu foreground + WM_NULL sequence so a click
+        // outside the popup dismisses it and reopening it works reliably.
+        SetForegroundWindow(_hotkeys.Handle);
+        _menu.Show(Cursor.Position);
+        PostMessage(_hotkeys.Handle, 0, IntPtr.Zero, IntPtr.Zero); // WM_NULL
     }
 
     private void HandleHotkey(int id)
@@ -105,6 +121,7 @@ internal sealed class TrayApplication : ApplicationContext
         }
         try
         {
+            _directPasteTarget = _settings.PasteToFocusedField ? CodexComposer.CaptureDirectTarget() : null;
             _reset.Stop();
             _cancellation?.Dispose();
             _cancellation = new CancellationTokenSource();
@@ -119,7 +136,8 @@ internal sealed class TrayApplication : ApplicationContext
         {
             _capture?.Dispose();
             _capture = null;
-            SetError("Could not start microphone: " + error.Message);
+            _directPasteTarget = null;
+            SetError(error is InvalidOperationException ? error.Message : "Could not start microphone: " + error.Message);
         }
     }
 
@@ -156,8 +174,15 @@ internal sealed class TrayApplication : ApplicationContext
             }
             if (cancellation.IsCancellationRequested) return;
             _lastTranscript = result;
-            SetStage(Stage.Inserting, "Finding bound text field...");
-            DeliveryResult delivery = CodexComposer.Insert(result, send);
+            SetStage(Stage.Inserting, _settings.PasteToFocusedField
+                ? "Pasting into the original focused field..." : "Finding bound text field...");
+            DeliveryResult delivery;
+            if (_settings.PasteToFocusedField)
+                delivery = _directPasteTarget is { } target
+                    ? CodexComposer.InsertDirect(result, send, target)
+                    : new DeliveryResult(false, false, "No focused field was captured when recording started.");
+            else
+                delivery = CodexComposer.Insert(result, send);
             if (delivery.Succeeded)
             {
                 SetStage(delivery.Verified ? Stage.Done : Stage.Unverified, delivery.Message);
@@ -171,6 +196,7 @@ internal sealed class TrayApplication : ApplicationContext
         catch (Exception error) { if (!cancellation.IsCancellationRequested) SetError(error.Message); }
         finally
         {
+            _directPasteTarget = null;
             if (ReferenceEquals(_capture, capture)) { _capture = null; capture.Dispose(); }
             _hotkeys.EnableCancel(false);
         }
@@ -187,6 +213,7 @@ internal sealed class TrayApplication : ApplicationContext
             _ = CleanupCancelledCapture(capture);
         }
         _tick.Stop();
+        _directPasteTarget = null;
         _hotkeys.EnableCancel(false);
         SetStage(Stage.Cancelled, "Cancelled");
     }
@@ -230,8 +257,14 @@ internal sealed class TrayApplication : ApplicationContext
         catch (Exception error) { SetError(error.Message); }
     }
 
-    private static void ExplainBinding()
+    private void ExplainBinding()
     {
+        if (_settings.PasteToFocusedField)
+        {
+            MessageBox.Show("Direct paste mode is enabled.\n\n1. Click inside the text field in either Codex window (or another app).\n2. Press your start shortcut while that field is focused.\n3. Keep the same field focused while recording and transcribing.\n4. Press your stop-and-send shortcut to paste and submit, or the insert-only shortcut to paste without sending.\n\nThis mode uses the clipboard without reading the destination text. If focus changes, insertion is cancelled.",
+                "Paste into the focused field", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
         MessageBox.Show("1. Open Codex, IntelliJ IDEA, or another Windows application.\n2. Click inside the text field you want to dictate into.\n3. Press Ctrl+Alt+B while the field is focused.\n\nSome Java/Swing text fields only support focus-based paste. Keep that field focused during dictation; automatic sending requires verified text insertion.",
             "Bind a text field", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
@@ -258,11 +291,13 @@ internal sealed class TrayApplication : ApplicationContext
     {
         _stage = stage;
         _stageDetails = details;
+        _targetHelpItem.Text = _settings.PasteToFocusedField
+            ? "How direct paste mode works..." : "How to bind a text field (Ctrl+Alt+B)...";
         _stageItem.Text = $"{stage}: {details}";
         _startItem.Enabled = stage is Stage.Ready or Stage.Recording or Stage.Done or Stage.Unverified or Stage.Error or Stage.Cancelled;
         _sendItem.Enabled = stage == Stage.Recording;
         _cancelItem.Enabled = IsBusy;
-        _retryItem.Enabled = !IsBusy && !string.IsNullOrWhiteSpace(_lastTranscript);
+        _retryItem.Enabled = !_settings.PasteToFocusedField && !IsBusy && !string.IsNullOrWhiteSpace(_lastTranscript);
         _copyItem.Enabled = !string.IsNullOrWhiteSpace(_lastTranscript);
         var nextIcon = DrawIcon(stage);
         _tray.Icon = nextIcon;
@@ -354,6 +389,14 @@ internal sealed class TrayApplication : ApplicationContext
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool DestroyIcon(IntPtr handle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr handle);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(IntPtr handle, uint message, IntPtr wParam, IntPtr lParam);
 }
 
 internal static class TrayIconDrawing

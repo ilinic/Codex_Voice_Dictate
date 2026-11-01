@@ -13,6 +13,7 @@ internal sealed class AppSettings
     public bool ShowNotifications { get; set; } = true;
     public string InsertShortcut { get; set; } = "F8";
     public string SendShortcut { get; set; } = "F9";
+    public bool PasteToFocusedField { get; set; }
     public string ComposerAutomationId { get; set; } = "";
     public string ComposerName { get; set; } = "";
     public string ComposerClassName { get; set; } = "";
