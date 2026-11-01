@@ -84,6 +84,11 @@
                         <TextBlock Text="Choose languages, or leave everything unchecked for automatic detection."
                                    Style="{StaticResource Hint}" Margin="0,0,0,12" />
                         <WrapPanel x:Name="LanguagesPanel" />
+                        <TextBlock Text="Recognition context" Style="{StaticResource FieldHeading}" Margin="0,10,0,5" />
+                        <TextBlock Text="Describe the project and the exact spelling of names or abbreviations. Sent with each transcription; leave blank for no extra context."
+                                   Style="{StaticResource Hint}" Margin="0,0,0,8" />
+                        <TextBox x:Name="RecognitionContextBox" Height="104" MaxLength="1200" AcceptsReturn="True"
+                                 TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
                         <Separator Margin="0,8,0,17" Background="#E2E7EE" />
                         <CheckBox x:Name="CorrectionEnabled" Content="Correct technical terms and punctuation"
                                   FontWeight="SemiBold" />

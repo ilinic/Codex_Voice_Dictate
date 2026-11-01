@@ -47,6 +47,8 @@ public partial class SettingsWindow : Window
             _languageChecks.Add((language.Code, box));
         }
 
+        RecognitionContextBox.Text = settings.RecognitionContext;
+
         CorrectionEnabled.IsChecked = settings.CorrectText;
         foreach (var model in AppSettings.CorrectionModels)
             CorrectionModelBox.Items.Add(model.Label);
@@ -125,6 +127,7 @@ public partial class SettingsWindow : Window
         _settings.SetApiKey(ApiKeyBox.Password);
         _settings.RecognitionLanguages = string.Join(",", _languageChecks
             .Where(item => item.CheckBox.IsChecked == true).Select(item => item.Code));
+        _settings.RecognitionContext = RecognitionContextBox.Text.Trim();
         _settings.CorrectText = CorrectionEnabled.IsChecked == true;
         _settings.CorrectionModel = AppSettings.CorrectionModels[CorrectionModelBox.SelectedIndex].Id;
         _settings.InsertShortcut = insert.ToString();

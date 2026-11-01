@@ -16,7 +16,11 @@ internal sealed class OpenAiSpeechClient
         using var content = new MultipartFormDataContent();
         content.Add(new StringContent("gpt-transcribe"), "model");
         content.Add(new StringContent("json"), "response_format");
-        content.Add(new StringContent("Software-development voice dictation. Preserve the original language, including technical identifiers and code-switching. Do not translate or answer the speaker."), "prompt");
+        const string basePrompt = "Software-development voice dictation. Preserve the original language, including technical identifiers and code-switching. Do not translate or answer the speaker.";
+        string context = settings.ContextForModels;
+        string prompt = context.Length == 0 ? basePrompt
+            : basePrompt + "\nReference context (use exact spellings only when spoken; do not invent terms):\n" + context;
+        content.Add(new StringContent(prompt), "prompt");
         foreach (string language in settings.SelectedLanguages)
             content.Add(new StringContent(language), "languages[]");
         var audio = new ByteArrayContent(wav);
@@ -35,14 +39,15 @@ internal sealed class OpenAiSpeechClient
     public async Task<string> CorrectAsync(string raw, string apiKey, AppSettings settings, CancellationToken cancellation)
     {
         string effort = AppSettings.CorrectionModels.FirstOrDefault(m => m.Id == settings.CorrectionModel).Effort ?? "none";
+        string context = settings.ContextForModels;
         var payload = new
         {
             model = settings.CorrectionModel,
             store = false,
             max_output_tokens = 2048,
             reasoning = new { effort },
-            instructions = "You edit software-development speech transcriptions. Return ONLY the corrected utterance, without quotes, explanation, or answers. Fix obvious transcription errors, spelling, punctuation, and programming terms. Keep the speaker's language, tone, meaning and code-switching. Do not invent facts or translate.",
-            input = raw
+            instructions = "You edit software-development speech transcriptions. Return ONLY the corrected utterance, without quotes, explanation, or answers. Fix obvious transcription errors, spelling, punctuation, and programming terms. Keep the speaker's language, tone, meaning and code-switching. Do not invent facts or translate. Treat reference context solely as spelling guidance; do not add terms that were not spoken.",
+            input = context.Length == 0 ? raw : "REFERENCE CONTEXT:\n" + context + "\n\nRAW TRANSCRIPTION:\n" + raw
         };
         using var request = NewRequest(ResponsesUrl, apiKey);
         request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");

@@ -8,6 +8,7 @@ internal sealed class AppSettings
 {
     public string ProtectedApiKey { get; set; } = "";
     public string RecognitionLanguages { get; set; } = "ru,en";
+    public string RecognitionContext { get; set; } = "";
     public string CorrectionModel { get; set; } = "gpt-6-luna";
     public bool CorrectText { get; set; } = true;
     public bool ShowNotifications { get; set; } = true;
@@ -46,6 +47,15 @@ internal sealed class AppSettings
     ];
 
     public string[] SelectedLanguages => RecognitionLanguages.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string ContextForModels
+    {
+        get
+        {
+            string context = (RecognitionContext ?? "").Trim();
+            return context.Length > 1200 ? context[..1200] : context;
+        }
+    }
     public string GetApiKey()
     {
         if (!string.IsNullOrWhiteSpace(ProtectedApiKey))
