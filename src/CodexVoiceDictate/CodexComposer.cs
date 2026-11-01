@@ -123,11 +123,8 @@ internal static class CodexComposer
 
         if (send)
         {
-            if (window.IsCodex) SendChord(0x11, 0x0D);
-            else SendKey(0x0D);
-            return new(true, true, window.IsCodex
-                ? "Text verified; Ctrl+Enter sent to Codex."
-                : "Text verified; Enter sent to the captured editor.");
+            SendKey(0x0D); // Enter submits in Codex and other supported editors.
+            return new(true, true, "Text verified; Enter sent to the captured editor.");
         }
         return new(true, true, "Text verified in the editor captured at recording start.");
     }
@@ -150,11 +147,8 @@ internal static class CodexComposer
 
         if (send)
         {
-            if (target.IsCodex) SendChord(0x11, 0x0D); // Ctrl+Enter in Codex
-            else SendKey(0x0D); // Enter elsewhere
-            return new(true, false, target.IsCodex
-                ? "Clipboard paste and Ctrl+Enter sent to the focused Codex window (not verified)."
-                : "Clipboard paste and Enter sent to the focused window (not verified).");
+            SendKey(0x0D); // Enter in every destination, including Codex.
+            return new(true, false, "Clipboard paste and Enter sent to the focused window (not verified).");
         }
         return new(true, false, "Pasted through the clipboard into the focused field (not verified).");
     }
@@ -294,13 +288,6 @@ internal static class CodexComposer
 
         if (send)
         {
-            // Codex may require Ctrl+Enter for multi-line prompts. Other editors
-            // generally use Enter, so do not change their shortcut behavior.
-            if (IsCodexWindow(window))
-            {
-                SendChord(0x11, 0x0D); // Ctrl+Enter
-                return new(true, true, "Text verified; Ctrl+Enter sent to Codex.");
-            }
             SendKey(0x0D);
             return new(true, true, "Text verified; Enter sent to the bound application.");
         }
