@@ -21,9 +21,9 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore src/CodexVoiceDictate/CodexVoiceDictate.csproj
       - name: Build
-        run: dotnet build src/CodexVoiceDictate/CodexVoiceDictate.csproj --configuration Release --no-restore
+        run: dotnet build src/CodexVoiceDictate/CodexVoiceDictate.csproj --configuration Release --no-restore -p:Version=0.1.${{ github.run_number }}
       - name: Publish self-contained Windows executable
-        run: dotnet publish src/CodexVoiceDictate/CodexVoiceDictate.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output publish
+        run: dotnet publish src/CodexVoiceDictate/CodexVoiceDictate.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=0.1.${{ github.run_number }} --output publish
       - name: Upload portable app
         uses: actions/upload-artifact@v4
         with:

@@ -6,6 +6,7 @@ namespace CodexVoiceDictate;
 
 internal readonly record struct DeliveryResult(bool Succeeded, bool Verified, string Message);
 internal readonly record struct DirectPasteTarget(IntPtr WindowHandle, IntPtr FocusHandle, int ProcessId, bool IsCodex);
+internal readonly record struct AutoBoundTarget(DirectPasteTarget Window, AutomationElement? Editor);
 
 /// <summary>
 /// Pins an explicitly focused text target in any Windows application. UI Automation
@@ -41,6 +42,94 @@ internal static class CodexComposer
         IntPtr focused = GetNativeFocus(window);
         bool codex = IsCodexProcess(processId);
         return new DirectPasteTarget(window, focused, (int)processId, codex);
+    }
+
+    /// <summary>Capture the foreground editor once, at the start of each dictation.</summary>
+    public static AutoBoundTarget CaptureAutoBoundTarget()
+    {
+        DirectPasteTarget target = CaptureDirectTarget();
+        AutomationElement? focused = Safe(() => AutomationElement.FocusedElement);
+        AutomationElement? editor = null;
+        if (focused != null && Safe(() => focused.Current.ProcessId) == target.ProcessId)
+        {
+            if (Safe(() => focused.Current.IsPassword))
+                throw new InvalidOperationException("Password fields cannot be used as dictation targets.");
+
+            editor = FindEditableAncestor(focused);
+            if (editor == null)
+            {
+                // Some custom controls (notably Swing) expose their canvas as a
+                // Custom or Pane rather than an editable UI Automation element.
+                ControlType? type = Safe(() => focused.Current.ControlType);
+                if (type == ControlType.Custom || type == ControlType.Pane) editor = focused;
+                else if (type == ControlType.Button || type == ControlType.CheckBox ||
+                         type == ControlType.MenuItem || type == ControlType.TreeItem ||
+                         type == ControlType.ListItem)
+                    throw new InvalidOperationException("Focus a text editor before starting dictation.");
+            }
+        }
+        if (editor == null && target.FocusHandle == IntPtr.Zero)
+            throw new InvalidOperationException("Could not identify a focused editor. Click in a text field and try again.");
+        return new AutoBoundTarget(target, editor);
+    }
+
+    /// <summary>Return to the exact window/editor captured for this recording and verify insertion.</summary>
+    public static DeliveryResult InsertAutoBound(string text, bool send, AutoBoundTarget target)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return new(false, false, "The transcript is empty.");
+        DirectPasteTarget window = target.Window;
+        if (!IsWindow(window.WindowHandle))
+            return new(false, false, "The editor window was closed during dictation.");
+        GetWindowThreadProcessId(window.WindowHandle, out uint processId);
+        if (processId != (uint)window.ProcessId)
+            return new(false, false, "The editor window changed during dictation.");
+
+        if (IsIconic(window.WindowHandle)) ShowWindow(window.WindowHandle, 9);
+        SetForegroundWindow(window.WindowHandle);
+        Thread.Sleep(100);
+        if (GetForegroundWindow() != window.WindowHandle)
+            return new(false, false, "Windows could not restore focus to the editor captured at recording start.");
+
+        if (target.Editor != null)
+        {
+            try { target.Editor.SetFocus(); }
+            catch (Exception error) when (error is ElementNotAvailableException or InvalidOperationException or COMException)
+            { /* Native focus may work for custom controls that reject UIA SetFocus. */ }
+        }
+        Thread.Sleep(100);
+
+        AutomationElement? focused = Safe(() => AutomationElement.FocusedElement);
+        bool uiaFocused = target.Editor != null && focused != null && IsDescendantOrSelf(focused, target.Editor);
+        bool nativeFocused = window.FocusHandle != IntPtr.Zero && GetNativeFocus(window.WindowHandle) == window.FocusHandle;
+        bool differentAccessibleField = target.Editor != null && focused != null &&
+            Safe(() => focused.Current.ProcessId) == window.ProcessId &&
+            !IsDescendantOrSelf(focused, target.Editor) && !IsDescendantOrSelf(target.Editor, focused);
+        if (differentAccessibleField || (!uiaFocused && !nativeFocused) || GetForegroundWindow() != window.WindowHandle)
+            return new(false, false, "The original editor no longer has focus; nothing was pasted.");
+
+        string? before = target.Editor == null ? null : ReadText(target.Editor);
+        Clipboard.SetText(text);
+        SendChord(0x11, 0x56); // Ctrl+V
+        Thread.Sleep(350);
+
+        string? after = target.Editor == null ? null : ReadText(target.Editor);
+        bool verified = before != null && after != null &&
+                        !string.Equals(before, after, StringComparison.Ordinal) &&
+                        Normalize(after).Contains(Normalize(text), StringComparison.Ordinal);
+        if (!verified)
+            return new(true, false, send
+                ? "Paste attempted, but insertion could not be verified; nothing was auto-sent. Transcript is in the clipboard."
+                : "Paste attempted, but insertion could not be verified. Transcript is in the clipboard.");
+
+        if (send)
+        {
+            if (window.IsCodex) SendChord(0x11, 0x0D);
+            else SendKey(0x0D);
+            return new(true, true, window.IsCodex
+                ? "Text verified; Ctrl+Enter sent to Codex."
+                : "Text verified; Enter sent to the captured editor.");
+        }
+        return new(true, true, "Text verified in the editor captured at recording start.");
     }
 
     /// <summary>

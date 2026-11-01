@@ -26,13 +26,7 @@ public partial class SettingsWindow : Window
         FontSize = Math.Max(14, System.Windows.SystemFonts.MessageFontSize);
 
         ApiKeyBox.Password = settings.GetApiKey();
-        BoundTargetInfo.Text = settings.ComposerBound
-            ? string.IsNullOrWhiteSpace(settings.TargetProcessName)
-                ? "Codex (older binding; press Ctrl+Alt+B to update)"
-                : $"{settings.TargetProcessName} — {settings.TargetWindowTitle}"
-            : "No field bound yet. Codex is used by default.";
         PasteToFocusedFieldBox.IsChecked = settings.PasteToFocusedField;
-        UpdateTargetMode();
         var selected = settings.SelectedLanguages.ToHashSet();
         foreach (var language in AppSettings.Languages)
         {
@@ -104,13 +98,6 @@ public partial class SettingsWindow : Window
         var shortcut = new Shortcut(virtualKey, modifiers);
         if (shortcut.IsValid && sender is WpfTextBox box)
             box.Text = shortcut.ToString();
-    }
-
-    private void DirectPasteModeChanged(object sender, RoutedEventArgs e) => UpdateTargetMode();
-
-    private void UpdateTargetMode()
-    {
-        BoundTargetPanel.IsEnabled = PasteToFocusedFieldBox.IsChecked != true;
     }
 
     private void SaveClicked(object sender, RoutedEventArgs e)

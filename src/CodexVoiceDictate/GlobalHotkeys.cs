@@ -81,7 +81,6 @@ internal sealed class GlobalHotkeys : NativeWindow, IDisposable
     private const uint MOD_NOREPEAT = 0x4000;
     private readonly Action<int> _callback;
     private readonly HashSet<int> _registered = [];
-    public bool BindHotkeyAvailable => _registered.Contains(4);
 
     public GlobalHotkeys(Action<int> callback)
     {
@@ -89,18 +88,13 @@ internal sealed class GlobalHotkeys : NativeWindow, IDisposable
         CreateHandle(new CreateParams { Caption = "Codex Voice Dictate hotkeys" });
     }
 
-    public void RegisterMain(Shortcut insert, Shortcut send, bool registerBinding)
+    public void RegisterMain(Shortcut insert, Shortcut send)
     {
         UnregisterAll();
         try
         {
             Register(1, insert);
             Register(2, send);
-            if (registerBinding)
-            {
-                try { Register(4, new Shortcut(Keys.B, HotkeyModifiers.Control | HotkeyModifiers.Alt)); }
-                catch (Win32Exception) { /* Optional binding shortcut must not break dictation hotkeys. */ }
-            }
         }
         catch { UnregisterAll(); throw; }
     }

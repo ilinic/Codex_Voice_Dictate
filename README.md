@@ -4,4 +4,4 @@ Voice dictation into Windows text fields, including Codex and IntelliJ IDEA. The
 
 **[Download the latest Windows `.exe`](https://github.com/ilinic/Codex_Voice_Dictate/releases/latest/download/CodexVoiceDictate.exe)** · [All releases](https://github.com/ilinic/Codex_Voice_Dictate/releases)
 
-Run it, then right-click the tray icon → **Settings** to configure your API key, languages and optional direct-paste mode. Either focus a field before recording (direct paste) or press **Ctrl+Alt+B** to bind it. Use **F8** to dictate and **F9** to stop and send.
+Run it, then open **Settings** from the tray to configure the API key and languages. Focus any text field and press **F8** to dictate or **F9** to stop and send. The app automatically remembers the focused editor at recording start; enable clipboard-only mode in Settings if preferred.

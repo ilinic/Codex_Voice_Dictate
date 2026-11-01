@@ -8,15 +8,10 @@ internal enum Stage { Ready, Recording, Transcribing, Correcting, Inserting, Don
 /// <summary>No main window: the tray icon is the primary UI and communicates stage through a glyph and color.</summary>
 internal sealed class TrayApplication : ApplicationContext
 {
+    private static readonly string AppVersion = typeof(TrayApplication).Assembly.GetName().Version?.ToString(3) ?? "0.1.0";
     private readonly NotifyIcon _tray;
     private readonly ContextMenuStrip _menu;
     private readonly ToolStripMenuItem _stageItem;
-    private readonly ToolStripMenuItem _startItem;
-    private readonly ToolStripMenuItem _sendItem;
-    private readonly ToolStripMenuItem _cancelItem;
-    private readonly ToolStripMenuItem _retryItem;
-    private readonly ToolStripMenuItem _copyItem;
-    private readonly ToolStripMenuItem _targetHelpItem;
     private readonly GlobalHotkeys _hotkeys;
     private readonly System.Windows.Forms.Timer _tick;
     private readonly System.Windows.Forms.Timer _reset;
@@ -24,6 +19,7 @@ internal sealed class TrayApplication : ApplicationContext
     private AppSettings _settings;
     private WaveCapture? _capture;
     private DirectPasteTarget? _directPasteTarget;
+    private AutoBoundTarget? _autoBoundTarget;
     private CancellationTokenSource? _cancellation;
     private string _lastTranscript = "";
     private string _stageDetails = "Ready";
@@ -34,19 +30,10 @@ internal sealed class TrayApplication : ApplicationContext
     public TrayApplication()
     {
         _settings = AppSettings.Load();
-        _menu = new ContextMenuStrip { Font = SystemFonts.MenuFont, AutoClose = true };
+        _menu = new ContextMenuStrip { Font = SystemFonts.MenuFont, AutoClose = true, ShowItemToolTips = true };
         _stageItem = new ToolStripMenuItem("Ready") { Enabled = false };
-        _startItem = new ToolStripMenuItem("Start / stop (insert only)", null, (_, _) => ToggleRecording());
-        _sendItem = new ToolStripMenuItem("Stop & send", null, (_, _) => Finish(true));
-        _cancelItem = new ToolStripMenuItem("Cancel (Esc)", null, (_, _) => Cancel());
-        _retryItem = new ToolStripMenuItem("Retry inserting last transcript", null, (_, _) => RetryInsertion());
-        _copyItem = new ToolStripMenuItem("Copy last transcript", null, (_, _) => CopyLast());
-        _targetHelpItem = new ToolStripMenuItem("How to bind a text field (Ctrl+Alt+B)...", null, (_, _) => ExplainBinding());
         _menu.Items.AddRange([
-            _stageItem, new ToolStripSeparator(), _startItem, _sendItem, _cancelItem,
-            new ToolStripSeparator(), _retryItem, _copyItem,
-            new ToolStripSeparator(),
-            _targetHelpItem,
+            _stageItem, new ToolStripSeparator(),
             new ToolStripMenuItem("Settings...", null, (_, _) => ShowSettings()),
             new ToolStripMenuItem("Exit", null, (_, _) => ExitThread())
         ]);
@@ -72,13 +59,7 @@ internal sealed class TrayApplication : ApplicationContext
         {
             Shortcut.TryParse(_settings.InsertShortcut, out var insert);
             Shortcut.TryParse(_settings.SendShortcut, out var send);
-            _hotkeys.RegisterMain(insert, send, !_settings.PasteToFocusedField);
-            if (!_settings.PasteToFocusedField && !_hotkeys.BindHotkeyAvailable)
-            {
-                SetStage(Stage.Error, "Ctrl+Alt+B is already in use; binding shortcut unavailable");
-                _tray.ShowBalloonTip(5000, "Binding hotkey unavailable",
-                    "Another application reserved Ctrl+Alt+B. Close it or release that global shortcut.", ToolTipIcon.Warning);
-            }
+            _hotkeys.RegisterMain(insert, send);
         }
         catch (Exception error)
         {
@@ -104,7 +85,6 @@ internal sealed class TrayApplication : ApplicationContext
             case 1: ToggleRecording(); break;
             case 2: Finish(true); break;
             case 3: Cancel(); break;
-            case 4: BindFocusedComposer(); break;
         }
     }
 
@@ -120,7 +100,12 @@ internal sealed class TrayApplication : ApplicationContext
         }
         try
         {
-            _directPasteTarget = _settings.PasteToFocusedField ? CodexComposer.CaptureDirectTarget() : null;
+            _directPasteTarget = null;
+            _autoBoundTarget = null;
+            if (_settings.PasteToFocusedField)
+                _directPasteTarget = CodexComposer.CaptureDirectTarget();
+            else
+                _autoBoundTarget = CodexComposer.CaptureAutoBoundTarget();
             _reset.Stop();
             _cancellation?.Dispose();
             _cancellation = new CancellationTokenSource();
@@ -136,6 +121,7 @@ internal sealed class TrayApplication : ApplicationContext
             _capture?.Dispose();
             _capture = null;
             _directPasteTarget = null;
+            _autoBoundTarget = null;
             SetError(error is InvalidOperationException ? error.Message : "Could not start microphone: " + error.Message);
         }
     }
@@ -175,14 +161,16 @@ internal sealed class TrayApplication : ApplicationContext
             if (cancellation.IsCancellationRequested) return;
             _lastTranscript = result;
             SetStage(Stage.Inserting, _settings.PasteToFocusedField
-                ? "Pasting into the original focused field..." : "Finding bound text field...");
+                ? "Pasting into the original focused field..." : "Restoring editor captured at recording start...");
             DeliveryResult delivery;
             if (_settings.PasteToFocusedField)
                 delivery = _directPasteTarget is { } target
                     ? CodexComposer.InsertDirect(result, send, target)
                     : new DeliveryResult(false, false, "No focused field was captured when recording started.");
             else
-                delivery = CodexComposer.Insert(result, send);
+                delivery = _autoBoundTarget is { } bound
+                    ? CodexComposer.InsertAutoBound(result, send, bound)
+                    : new DeliveryResult(false, false, "No editor was captured when recording started.");
             if (delivery.Succeeded)
             {
                 SetStage(delivery.Verified ? Stage.Done : Stage.Unverified, delivery.Message);
@@ -204,6 +192,7 @@ internal sealed class TrayApplication : ApplicationContext
         finally
         {
             _directPasteTarget = null;
+            _autoBoundTarget = null;
             if (ReferenceEquals(_capture, capture)) { _capture = null; capture.Dispose(); }
             _hotkeys.EnableCancel(false);
         }
@@ -221,6 +210,7 @@ internal sealed class TrayApplication : ApplicationContext
         }
         _tick.Stop();
         _directPasteTarget = null;
+        _autoBoundTarget = null;
         _hotkeys.EnableCancel(false);
         SetStage(Stage.Cancelled, "Cancelled");
     }
@@ -230,26 +220,6 @@ internal sealed class TrayApplication : ApplicationContext
         try { await capture.StopAsync(); }
         catch { /* Cancellation discards audio and any capture errors. */ }
         finally { capture.Dispose(); }
-    }
-
-    private void RetryInsertion()
-    {
-        if (IsBusy || string.IsNullOrEmpty(_lastTranscript)) return;
-        try
-        {
-            SetStage(Stage.Inserting, "Retrying insertion...");
-            var delivery = CodexComposer.Insert(_lastTranscript, false);
-            if (delivery.Succeeded) SetStage(delivery.Verified ? Stage.Done : Stage.Unverified, delivery.Message);
-            else SetErrorWithClipboardFallback(delivery.Message);
-        }
-        catch (Exception error) { SetErrorWithClipboardFallback(error.Message); }
-    }
-
-    private void CopyLast()
-    {
-        if (string.IsNullOrEmpty(_lastTranscript)) return;
-        if (TryCopyTranscriptToClipboard()) SetStage(Stage.Done, "Transcript copied to clipboard");
-        else SetError("Could not access the clipboard. Please try again.");
     }
 
     private void SetErrorWithClipboardFallback(string message)
@@ -269,30 +239,6 @@ internal sealed class TrayApplication : ApplicationContext
             catch (ThreadStateException) { return false; }
         }
         return false;
-    }
-
-    private void BindFocusedComposer()
-    {
-        if (IsBusy) return;
-        try
-        {
-            string result = CodexComposer.BindCurrent(_settings);
-            SetStage(Stage.Done, result);
-            _tray.ShowBalloonTip(3000, "Text field linked", result, ToolTipIcon.Info);
-        }
-        catch (Exception error) { SetError(error.Message); }
-    }
-
-    private void ExplainBinding()
-    {
-        if (_settings.PasteToFocusedField)
-        {
-            MessageBox.Show("Direct paste mode is enabled.\n\n1. Click inside the text field in either Codex window (or another app).\n2. Press your start shortcut while that field is focused.\n3. Keep the same field focused while recording and transcribing.\n4. Press your stop-and-send shortcut to paste and submit, or the insert-only shortcut to paste without sending.\n\nThis mode uses the clipboard without reading the destination text. If focus changes, insertion is cancelled.",
-                "Paste into the focused field", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
-        MessageBox.Show("1. Open Codex, IntelliJ IDEA, or another Windows application.\n2. Click inside the text field you want to dictate into.\n3. Press Ctrl+Alt+B while the field is focused.\n\nSome Java/Swing text fields only support focus-based paste. Keep that field focused during dictation; automatic sending requires verified text insertion.",
-            "Bind a text field", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private void ShowSettings()
@@ -317,14 +263,8 @@ internal sealed class TrayApplication : ApplicationContext
     {
         _stage = stage;
         _stageDetails = details;
-        _targetHelpItem.Text = _settings.PasteToFocusedField
-            ? "How direct paste mode works..." : "How to bind a text field (Ctrl+Alt+B)...";
-        _stageItem.Text = $"{stage}: {details}";
-        _startItem.Enabled = stage is Stage.Ready or Stage.Recording or Stage.Done or Stage.Unverified or Stage.Error or Stage.Cancelled;
-        _sendItem.Enabled = stage == Stage.Recording;
-        _cancelItem.Enabled = IsBusy;
-        _retryItem.Enabled = !_settings.PasteToFocusedField && !IsBusy && !string.IsNullOrWhiteSpace(_lastTranscript);
-        _copyItem.Enabled = !string.IsNullOrWhiteSpace(_lastTranscript);
+        _stageItem.Text = $"{stage} · v{AppVersion}";
+        _stageItem.ToolTipText = details;
         var nextIcon = DrawIcon(stage);
         _tray.Icon = nextIcon;
         _icon?.Dispose();
